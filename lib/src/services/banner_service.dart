@@ -2,6 +2,54 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/banner.dart';
+import 'api_casing.dart';
+
+/// Normalizes a raw banner API response so every field is readable under
+/// either camelCase or snake_case, regardless of which convention the
+/// backend serving this deployment actually uses. See api_casing.dart for
+/// why this is necessary — trukit-dev.truconsent.io (this package's own
+/// default API) returns pure camelCase at every level (banner,
+/// bannerSettings, purposes, and purposes' nested dataElements/tools/
+/// legalEntities/processingActivities).
+Map<String, dynamic> _normalizeBannerJson(Map<String, dynamic> data) {
+  final banner = withCasingAliases(data);
+
+  final rawSettings = banner['banner_settings'] ?? banner['bannerSettings'];
+  if (rawSettings is Map<String, dynamic>) {
+    final settings = withCasingAliases(rawSettings);
+    banner['banner_settings'] = settings;
+    banner['bannerSettings'] = settings;
+  }
+
+  final rawTranslations = banner['translations_snapshot'] ?? banner['translationsSnapshot'];
+  if (rawTranslations != null) {
+    banner['translations_snapshot'] = rawTranslations;
+    banner['translationsSnapshot'] = rawTranslations;
+  }
+
+  final rawPurposes = banner['purposes'];
+  if (rawPurposes is List) {
+    banner['purposes'] = rawPurposes.map((p) {
+      if (p is! Map<String, dynamic>) return p;
+      final purpose = withCasingAliases(p);
+      for (final key in ['data_elements', 'tools', 'legal_entities', 'processing_activities']) {
+        if (purpose[key] is List) {
+          purpose[key] = withCasingAliasesList(purpose[key] as List);
+        }
+      }
+      return purpose;
+    }).toList();
+  }
+
+  final rawReconsentPurposes = banner['reconsent_purposes'] ?? banner['reconsentPurposes'];
+  if (rawReconsentPurposes is List) {
+    final normalized = withCasingAliasesList(rawReconsentPurposes);
+    banner['reconsent_purposes'] = normalized;
+    banner['reconsentPurposes'] = normalized;
+  }
+
+  return banner;
+}
 
 String _bodyPreview(String body, {int max = 240}) {
   if (body.length <= max) return body;
@@ -11,23 +59,45 @@ String _bodyPreview(String body, {int max = 240}) {
 /// Default base URL for the TruConsent API
 const String defaultApiBaseUrl = 'https://trukit-dev.truconsent.io';
 
+/// Builds the auth-related headers for a request: an `Authorization: Bearer`
+/// header when a JWT [token]/[authToken] is available (preferred), otherwise
+/// an `X-API-Key` header. Mirrors the NPM and React Native SDKs' auth
+/// precedence (token/authToken takes priority over apiKey).
+Map<String, String> _authHeaders({String? apiKey, String? token}) {
+  if (token != null && token.isNotEmpty) {
+    return {'Authorization': 'Bearer $token'};
+  }
+  if (apiKey != null && apiKey.isNotEmpty) {
+    return {'X-API-Key': apiKey};
+  }
+  return {};
+}
+
 /// Fetches banner configuration from the TruConsent API.
 ///
 /// URL: GET {apiUrl}/api/v1/internal/consent/{assetId}/{bannerId}?userId={userId}
 /// or:  GET {apiUrl}/api/v1/internal/consent/{bannerId}?userId={userId}
+///
+/// Authenticates with either [apiKey] or a JWT bearer [token]/[authToken]
+/// (one of the two is required); [token] takes precedence if both are set.
 Future<Banner> fetchBanner({
   required String bannerId,
-  required String apiKey,
+  String? apiKey,
   required String organizationId,
   String? userId,
   String? assetId,
+  String? token,
+  String? authToken,
   String apiBaseUrl = defaultApiBaseUrl,
 }) async {
   if (bannerId.isEmpty) {
     throw Exception('Missing bannerId');
   }
-  if (apiKey.isEmpty) {
-    throw Exception('Missing apiKey - API key is required for authentication');
+  final effectiveToken = (token != null && token.isNotEmpty) ? token : authToken;
+  if ((apiKey == null || apiKey.isEmpty) &&
+      (effectiveToken == null || effectiveToken.isEmpty)) {
+    throw Exception(
+        'Missing apiKey/token - authentication is required (provide apiKey or token)');
   }
   if (organizationId.isEmpty) {
     throw Exception(
@@ -52,7 +122,7 @@ Future<Banner> fetchBanner({
     uri,
     headers: {
       'Content-Type': 'application/json',
-      'X-API-Key': apiKey,
+      ..._authHeaders(apiKey: apiKey, token: effectiveToken),
       'X-Org-Id': organizationId,
       if (userId != null && userId.isNotEmpty) 'X-User-Id': userId,
       'Sec-Fetch-Site': 'cross-site',
@@ -127,7 +197,7 @@ Future<Banner> fetchBanner({
     final bannerJson = jsonData.containsKey('data') && jsonData['data'] is Map
         ? (jsonData['data'] as Map<String, dynamic>)
         : jsonData;
-    return Banner.fromJson(bannerJson);
+    return Banner.fromJson(_normalizeBannerJson(bannerJson));
   } catch (e) {
     debugPrint('Error parsing JSON response: $e');
     throw Exception(
@@ -143,7 +213,7 @@ Future<Map<String, dynamic>> submitConsent({
   required String userId,
   required List<Purpose> purposes,
   required ConsentAction action,
-  required String apiKey,
+  String? apiKey,
   required String organizationId,
   String? requestId,
   String? assetId,
@@ -154,13 +224,17 @@ Future<Map<String, dynamic>> submitConsent({
   int? bannerFetchedAt,
   int? bannerDisplayedAt,
   int? userInteractionAt,
+  String? token,
+  String? authToken,
   String apiBaseUrl = defaultApiBaseUrl,
 }) async {
   if (collectionPointId.isEmpty) {
     throw Exception('Missing collectionPointId');
   }
-  if (apiKey.isEmpty) {
-    throw Exception('Missing apiKey');
+  final effectiveToken = (token != null && token.isNotEmpty) ? token : authToken;
+  if ((apiKey == null || apiKey.isEmpty) &&
+      (effectiveToken == null || effectiveToken.isEmpty)) {
+    throw Exception('Missing apiKey/token - authentication is required (provide apiKey or token)');
   }
   if (organizationId.isEmpty) {
     throw Exception('Missing organizationId');
@@ -202,7 +276,7 @@ Future<Map<String, dynamic>> submitConsent({
     url,
     headers: {
       'Content-Type': 'application/json',
-      'X-API-Key': apiKey,
+      ..._authHeaders(apiKey: apiKey, token: effectiveToken),
       'X-Org-Id': organizationId,
     },
     body: json.encode(body),
@@ -227,19 +301,22 @@ Future<Map<String, dynamic>> submitConsent({
 Future<void> sendSuppressionUpdate({
   required String userId,
   required List<String> declinedPurposeIds,
-  required String apiKey,
+  String? apiKey,
   required String organizationId,
+  String? token,
+  String? authToken,
   String apiBaseUrl = defaultApiBaseUrl,
 }) async {
   if (declinedPurposeIds.isEmpty) return;
 
+  final effectiveToken = (token != null && token.isNotEmpty) ? token : authToken;
   final url = Uri.parse('$apiBaseUrl/api/v1/internal/consent/suppression');
   try {
     await http.post(
       url,
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': apiKey,
+        ..._authHeaders(apiKey: apiKey, token: effectiveToken),
         'X-Org-Id': organizationId,
       },
       body: json.encode({
@@ -258,7 +335,7 @@ Future<Map<String, dynamic>> sendNoticeShown({
   required String collectionPointId,
   required String userId,
   required List<Purpose> purposes,
-  required String apiKey,
+  String? apiKey,
   required String organizationId,
   String? requestId,
   String? assetId,
@@ -266,6 +343,8 @@ Future<Map<String, dynamic>> sendNoticeShown({
   int? bannerFetchedAt,
   int? bannerDisplayedAt,
   String? reconsentCampaignId,
+  String? token,
+  String? authToken,
   String apiBaseUrl = defaultApiBaseUrl,
 }) async {
   final noticePurposes = purposes.map((p) => p.copyWith(consented: 'shown')).toList();
@@ -282,6 +361,8 @@ Future<Map<String, dynamic>> sendNoticeShown({
     buttonUsed: 'i_understand',
     bannerFetchedAt: bannerFetchedAt,
     bannerDisplayedAt: bannerDisplayedAt,
+    token: token,
+    authToken: authToken,
     apiBaseUrl: apiBaseUrl,
   );
 }

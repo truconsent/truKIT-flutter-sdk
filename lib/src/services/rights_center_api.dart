@@ -141,6 +141,10 @@ class DPOInfo {
 }
 
 class RightsCenterSettings {
+  /// 'sso' (default; the host app already knows the user's id) or
+  /// 'non_sso' (the Rights Center itself must authenticate the user via a
+  /// phone + OTP flow before showing any tab content).
+  final String accessMode;
   final String backgroundColor;
   final String primaryTextColor;
   final String secondaryTextColor;
@@ -165,6 +169,7 @@ class RightsCenterSettings {
   final bool dpoResponseTimeEnabled;
 
   const RightsCenterSettings({
+    this.accessMode = 'sso',
     required this.backgroundColor,
     required this.primaryTextColor,
     required this.secondaryTextColor,
@@ -190,6 +195,7 @@ class RightsCenterSettings {
   });
 
   static RightsCenterSettings get defaults => const RightsCenterSettings(
+        accessMode: 'sso',
         backgroundColor: '#020617',
         primaryTextColor: '#e5e7eb',
         secondaryTextColor: '#9ca3af',
@@ -217,6 +223,7 @@ class RightsCenterSettings {
   factory RightsCenterSettings.fromJson(Map<String, dynamic> json) {
     final d = defaults;
     return RightsCenterSettings(
+      accessMode: json['access_mode'] ?? json['accessMode'] ?? d.accessMode,
       backgroundColor: json['background_color'] ?? json['backgroundColor'] ?? d.backgroundColor,
       primaryTextColor: json['primary_text_color'] ?? json['primaryTextColor'] ?? d.primaryTextColor,
       secondaryTextColor: json['secondary_text_color'] ?? json['secondaryTextColor'] ?? d.secondaryTextColor,
@@ -393,6 +400,53 @@ class GrievanceTicket {
   }
 }
 
+/// Result of a successful non-SSO OTP verification: the token to use for
+/// subsequent authenticated Rights Center calls, and the data principal id
+/// (equivalent to `userId` in the SSO flow) it resolves to.
+class OtpVerifyResult {
+  final String accessToken;
+  final String dataPrincipalId;
+
+  OtpVerifyResult({required this.accessToken, required this.dataPrincipalId});
+
+  factory OtpVerifyResult.fromJson(Map<String, dynamic> json) {
+    return OtpVerifyResult(
+      accessToken: json['accessToken'] ?? json['access_token'] ?? '',
+      dataPrincipalId: json['dataPrincipalId'] ?? json['data_principal_id'] ?? '',
+    );
+  }
+}
+
+/// A single message in a grievance ticket's chat thread.
+class GrievanceMessage {
+  final String id;
+  final String sender; // 'user' | 'agent' | 'system'
+  final String message;
+  final DateTime? createdAt;
+  final String? attachmentUrl;
+  final String? attachmentName;
+
+  GrievanceMessage({
+    required this.id,
+    required this.sender,
+    required this.message,
+    this.createdAt,
+    this.attachmentUrl,
+    this.attachmentName,
+  });
+
+  factory GrievanceMessage.fromJson(Map<String, dynamic> json) {
+    return GrievanceMessage(
+      id: (json['id'] ?? json['message_id'] ?? '').toString(),
+      sender: json['sender'] ?? 'system',
+      message: json['message'] ?? '',
+      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
+      attachmentUrl: json['attachment_url'],
+      attachmentName: json['attachment_name'],
+    );
+  }
+}
+
 /// SDK paths that are gated by OriginEnforcementMiddleware on the backend.
 /// These require browser-spoofing headers (Sec-Fetch-Site + Mozilla User-Agent).
 const _sdkPaths = [
@@ -405,7 +459,15 @@ class RightsCenterApi {
   final String apiUrl;
   final String apiKey;
   final String organizationId;
-  final String? userId;
+
+  /// Mutable so the non-SSO OTP flow can promote the verified
+  /// `dataPrincipalId` to the active user id after authentication.
+  String? userId;
+
+  /// Bearer token acquired from [verifyOtp] in the non-SSO flow. When set,
+  /// it's sent as `Authorization: Bearer <authToken>` alongside the API key.
+  String? authToken;
+
   static const Duration _timeout = Duration(seconds: 30);
 
   RightsCenterApi({
@@ -413,6 +475,7 @@ class RightsCenterApi {
     required this.apiKey,
     required this.organizationId,
     this.userId,
+    this.authToken,
   });
 
   /// Backward-compat: accept baseUrl as well
@@ -450,6 +513,9 @@ class RightsCenterApi {
     }
     if (userId != null && userId!.isNotEmpty) {
       headers['X-User-Id'] = userId!;
+    }
+    if (authToken != null && authToken!.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $authToken';
     }
     // Backend OriginEnforcementMiddleware blocks /api/v1/internal/consent* and
     // /api/v1/internal/banners* unless the request looks like a browser.
@@ -615,6 +681,7 @@ class RightsCenterApi {
           'processingActivities': _toList(p['processing_activities'] ?? p['processingActivities']),
           'type': isMandatory ? 'Mandatory' : 'Optional',
           'timestamp': 0,
+          'shownToPrincipal': false,
         };
       }
     }
@@ -632,6 +699,8 @@ class RightsCenterApi {
       final logTimestamp = latestConsent is Map
           ? DateTime.tryParse(latestConsent['timestamp']?.toString() ?? '')?.millisecondsSinceEpoch ?? 0
           : 0;
+      // Any consent log (notice_shown, approved, declined, etc.) means the banner was shown.
+      final bannerWasShown = logTimestamp > 0;
 
       for (final pc in pcList) {
         if (pc is! Map<String, dynamic>) continue;
@@ -640,6 +709,10 @@ class RightsCenterApi {
         final existing = uniquePurposesMap[pid];
         if (existing == null) continue;
         final existingTs = (existing['timestamp'] as int?) ?? 0;
+        // For Legitimate Interest: banner being shown = shownToPrincipal = true, regardless
+        // of whether this particular log is newer than what we already have.
+        final shownToPrincipal = (existing['shownToPrincipal'] == true) ||
+            (existing['isLegitimate'] == true && bannerWasShown);
         if (logTimestamp > existingTs) {
           uniquePurposesMap[pid] = {
             ...existing,
@@ -652,7 +725,10 @@ class RightsCenterApi {
             if (pc['description'] != null) 'description': pc['description'],
             if (pc['name'] != null || pc['title'] != null)
               'name': pc['name'] ?? pc['title'] ?? existing['name'],
+            'shownToPrincipal': shownToPrincipal,
           };
+        } else if (shownToPrincipal != existing['shownToPrincipal']) {
+          uniquePurposesMap[pid] = {...existing, 'shownToPrincipal': shownToPrincipal};
         }
       }
     }
@@ -821,6 +897,107 @@ class RightsCenterApi {
           'requested_at': DateTime.now().toIso8601String(),
           'source': 'Rights Center',
         },
+      },
+    );
+  }
+
+  // ─── Non-SSO OTP authentication ───────────────────────────────────────────────
+
+  /// Requests an OTP be sent to [phone] (with [countryCode], e.g. '+91').
+  Future<void> sendOtp({
+    required String phone,
+    required String countryCode,
+    String? assetId,
+  }) async {
+    await _request(
+      '/api/v1/internal/rights-center-access/send-otp',
+      method: 'POST',
+      body: {
+        'assetId': assetId,
+        'phone': phone,
+        'countryCode': countryCode,
+      },
+    );
+  }
+
+  /// Verifies [otp] for [phone]/[countryCode]. On success, returns an
+  /// [OtpVerifyResult] with the access token and data principal id to use for
+  /// all subsequent Rights Center calls; also updates this instance's
+  /// [userId]/[authToken] so callers don't have to do it themselves.
+  Future<OtpVerifyResult> verifyOtp({
+    required String phone,
+    required String countryCode,
+    required String otp,
+    String? assetId,
+  }) async {
+    final result = await _request(
+      '/api/v1/internal/rights-center-access/verify-otp',
+      method: 'POST',
+      body: {
+        'assetId': assetId,
+        'phone': phone,
+        'countryCode': countryCode,
+        'otp': otp,
+      },
+    );
+    final data = (result is Map && result['data'] is Map) ? result['data'] : result;
+    final parsed = OtpVerifyResult.fromJson((data as Map?)?.cast<String, dynamic>() ?? {});
+    userId = parsed.dataPrincipalId;
+    authToken = parsed.accessToken;
+    return parsed;
+  }
+
+  // ─── Grievance chat ───────────────────────────────────────────────────────────
+
+  Future<List<GrievanceMessage>> getGrievanceMessages(String ticketId) async {
+    final result = await _request('/api/v1/internal/grievance/$ticketId/messages');
+    return _toList(result)
+        .map((m) => GrievanceMessage.fromJson((m as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
+  Future<GrievanceMessage> sendGrievanceMessage(
+    String ticketId,
+    String message,
+  ) async {
+    final result = await _request(
+      '/api/v1/internal/grievance/$ticketId/messages',
+      method: 'POST',
+      body: {
+        'sender': 'user',
+        'message': message,
+      },
+    );
+    final data = (result is Map && result['data'] is Map) ? result['data'] : result;
+    if (data is Map) {
+      return GrievanceMessage.fromJson(data.cast<String, dynamic>());
+    }
+    // Fall back to an optimistic local echo if the backend returns no body.
+    return GrievanceMessage(
+      id: 'local-${DateTime.now().microsecondsSinceEpoch}',
+      sender: 'user',
+      message: message,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  /// Builds the WebSocket URL for real-time grievance chat updates, per the
+  /// NPM SDK: auth is passed as query params (`token`, `api_key`, `org_id`)
+  /// rather than headers, since browsers can't set WS handshake headers —
+  /// this SDK does the same for parity with the backend's expected auth
+  /// shape (`_authenticate()` reads these query params unconditionally).
+  Uri grievanceWebSocketUri(String ticketId) {
+    final httpUri = Uri.parse(apiUrl);
+    final scheme = httpUri.scheme == 'https' ? 'wss' : 'ws';
+    return Uri(
+      scheme: scheme,
+      host: httpUri.host,
+      port: httpUri.hasPort ? httpUri.port : null,
+      path: '/ws/grievance/$ticketId',
+      queryParameters: {
+        'token': authToken ?? '',
+        'api_key': apiKey,
+        'org_id': organizationId,
       },
     );
   }

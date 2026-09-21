@@ -1,6 +1,6 @@
 name: truconsent_consent_notice_flutter
 description: Flutter SDK for TruConsent consent banner. This package provides native Flutter widgets for displaying and managing consent banners in Flutter applications.
-version: 0.1.4
+version: 0.1.6
 homepage: https://github.com/truconsent/truconsent-banner-flutter-sdk
 repository: https://github.com/truconsent/truconsent-banner-flutter-sdk
 issue_tracker: https://github.com/truconsent/truconsent-banner-flutter-sdk/issues
@@ -21,6 +21,7 @@ dependencies:
   uuid: ^4.3.0
   url_launcher: ^6.2.0
   webview_flutter: ^4.4.2
+  web_socket_channel: ^2.4.0
 
 dev_dependencies:
   flutter_test:
@@ -31,4 +32,98 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Fonts for the admin dashboard's "Font Type" dropdown (Common Appearance
+  # settings) — `BannerTheme.fontFamily` (banner_theme.dart) is set directly
+  # from the configured `font_type` string and used as-is in every Text
+  # widget across the consent notice, so each family below is registered
+  # under the *exact* name the dropdown offers. None of these are ever
+  # visible without this: neither Android nor iOS ships any of them, and
+  # Flutter (unlike a native platform view) never falls back to an OS font —
+  # an unregistered fontFamily just renders with the ambient default,
+  # silently, with no error.
+  #
+  # The proprietary system fonts (Arial, Helvetica, Verdana, Tahoma,
+  # Trebuchet MS, Times New Roman, Georgia, Garamond, Courier New) are
+  # commercial typefaces owned by Monotype/Apple/Microsoft — their actual
+  # font files can't be redistributed here. Each is instead mapped to a
+  # freely-licensed (OFL/Apache/Ubuntu Font License), visually similar, and
+  # in several cases metric-compatible open substitute — registered under
+  # the *original* family name so `font_type: 'Garamond'` etc. still
+  # resolves correctly without any extra mapping logic. "Sans-serif" needs
+  # no asset — it already resolves to Flutter's own default.
+  fonts:
+    # Exact matches — genuinely free Google Fonts, matching the dropdown 1:1.
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Roboto.ttf
+    - family: Open Sans
+      fonts:
+        - asset: assets/fonts/OpenSans.ttf
+    - family: Lato
+      fonts:
+        - asset: assets/fonts/Lato.ttf
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/Montserrat.ttf
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins.ttf
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito.ttf
+    - family: Raleway
+      fonts:
+        - asset: assets/fonts/Raleway.ttf
+    - family: Source Sans Pro
+      fonts:
+        - asset: assets/fonts/SourceSansPro.ttf
+    - family: Merriweather
+      fonts:
+        - asset: assets/fonts/Merriweather.ttf
+    - family: PT Sans
+      fonts:
+        - asset: assets/fonts/PTSans.ttf
+    - family: Ubuntu
+      fonts:
+        - asset: assets/fonts/Ubuntu.ttf
+    - family: Work Sans
+      fonts:
+        - asset: assets/fonts/WorkSans.ttf
+    - family: Rubik
+      fonts:
+        - asset: assets/fonts/Rubik.ttf
+
+    # Proprietary system fonts — registered under their original name, but
+    # pointing at a free open substitute (see comment above).
+    - family: Arial
+      fonts:
+        - asset: assets/fonts/Arimo.ttf
+    - family: Helvetica
+      fonts:
+        - asset: assets/fonts/Arimo.ttf
+    - family: Verdana
+      fonts:
+        - asset: assets/fonts/NotoSans.ttf
+    - family: Tahoma
+      fonts:
+        - asset: assets/fonts/NotoSans.ttf
+    - family: Trebuchet MS
+      fonts:
+        - asset: assets/fonts/NotoSans.ttf
+    - family: Times New Roman
+      fonts:
+        - asset: assets/fonts/Tinos.ttf
+    - family: Georgia
+      fonts:
+        - asset: assets/fonts/Gelasio.ttf
+    - family: Garamond
+      fonts:
+        - asset: assets/fonts/EBGaramond.ttf
+    - family: Courier New
+      fonts:
+        - asset: assets/fonts/Cousine.ttf
 

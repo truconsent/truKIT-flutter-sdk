@@ -16,5 +16,10 @@ const Map<String, String> taTranslations = {
   'tools': 'கருவிகள்',
   'processing_activities': 'செயலாக்க நடவடிக்கைகள்',
   'data_processors': 'தரவு செயலாக்கிகள்',
+  'informational': 'தகவல்',
+  'next': 'அடுத்து',
+  'consent': 'ஒப்புதல்',
+  'necessary_group': 'அவசியமானவை',
+  'optional_group': 'விருப்பமானவை',
 };
 

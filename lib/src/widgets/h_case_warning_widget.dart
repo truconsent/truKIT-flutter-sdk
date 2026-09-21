@@ -27,6 +27,15 @@ class HCaseWarningWidget extends StatelessWidget {
   /// Primary color for buttons
   final Color? primaryColor;
 
+  /// h_case_proceed_button_color from the notice's Global Settings. When
+  /// unset, falls back to primaryColor for both strategies, matching
+  /// truKIT-NPM's HCaseWarningPopup.jsx (which never hardcodes red here).
+  final Color? proceedColor;
+
+  /// h_case_back_button_color from the notice's Global Settings. When unset,
+  /// keeps the outlined style below.
+  final Color? backColor;
+
   const HCaseWarningWidget({
     super.key,
     required this.strategy,
@@ -36,6 +45,8 @@ class HCaseWarningWidget extends StatelessWidget {
     this.proceedText,
     this.backText,
     this.primaryColor,
+    this.proceedColor,
+    this.backColor,
   });
 
   @override
@@ -43,7 +54,7 @@ class HCaseWarningWidget extends StatelessWidget {
     final isSoft = strategy == 'soft_first';
     final resolvedProceedText = proceedText ?? (isSoft ? 'Proceed Anyway' : 'OK');
     final resolvedBackText = backText ?? 'Go Back';
-    final btnColor = primaryColor ?? const Color(0xFF7030bc);
+    final btnColor = primaryColor ?? const Color(0xFF3b82f6);
 
     return Container(
       decoration: BoxDecoration(
@@ -103,31 +114,51 @@ class HCaseWarningWidget extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton(
-                    onPressed: onBack,
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: btnColor, width: 1.5),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: Text(
-                      resolvedBackText,
-                      style: TextStyle(
-                        color: btnColor,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
+                  child: backColor != null
+                      ? ElevatedButton(
+                          onPressed: onBack,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: backColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: Text(
+                            resolvedBackText,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        )
+                      : OutlinedButton(
+                          onPressed: onBack,
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: btnColor, width: 1.5),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: Text(
+                            resolvedBackText,
+                            style: TextStyle(
+                              color: btnColor,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
                     onPressed: onProceed,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFDC2626),
+                      backgroundColor: proceedColor ?? btnColor,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
@@ -152,7 +183,7 @@ class HCaseWarningWidget extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: onProceed,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: btnColor,
+                  backgroundColor: proceedColor ?? btnColor,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(

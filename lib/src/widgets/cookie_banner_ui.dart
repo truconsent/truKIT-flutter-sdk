@@ -235,7 +235,11 @@ class _CookieBannerUIState extends State<CookieBannerUI> {
                 ),
                 OutlinedButton(
                   onPressed: () {
-                    // TODO: Implement preferences management
+                    setState(() {
+                      _expandedSections['purposes'] = true;
+                      _expandedSections['dataElements'] = true;
+                      _expandedSections['activities'] = true;
+                    });
                   },
                   child: const Text('Manage Preferences'),
                 ),

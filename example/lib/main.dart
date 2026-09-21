@@ -31,12 +31,12 @@ class TestApp extends StatefulWidget {
 
 class _TestAppState extends State<TestApp> {
   final _apiKeyController = TextEditingController(
-    text: 'z7d141o8rbibx2btbcE6yRMXSErL0unLysWs4leu_Hbgn5duU3mqEQ',
+    text: 'YOUR_API_KEY',
   );
   final _organizationIdController = TextEditingController(text: 'acme-dev');
   final _bannerIdController = TextEditingController(text: 'CP102');
   final _userIdController = TextEditingController(
-    text: 'user-MTQuMTk1LjM2LjEw',
+    text: 'test-user-id',
   );
 
   bool _showModal = false;

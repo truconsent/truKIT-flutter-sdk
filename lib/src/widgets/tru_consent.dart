@@ -10,26 +10,37 @@ import 'tru_consent_modal.dart';
 import '../models/banner.dart';
 
 class TruConsent extends StatelessWidget {
-  final String apiKey;
+  final String? apiKey;
   final String organizationId;
   final String bannerId;
   final String userId;
+  final String? assetId;
   final String? apiBaseUrl;
   final String? logoUrl;
   final String companyName;
+  final String? token;
+  final String? authToken;
   final Function(ConsentAction)? onClose;
+  final Function(List<Purpose>, ConsentAction)? onSubmit;
 
   const TruConsent({
     super.key,
-    required this.apiKey,
+    this.apiKey,
     required this.organizationId,
     required this.bannerId,
     required this.userId,
+    this.assetId,
     this.apiBaseUrl,
     this.logoUrl,
     this.companyName = 'Mars Company',
+    this.token,
+    this.authToken,
     this.onClose,
-  });
+    this.onSubmit,
+  }) : assert(
+          apiKey != null || token != null || authToken != null,
+          'TruConsent requires either apiKey or token/authToken',
+        );
 
   @override
   Widget build(BuildContext context) {
@@ -39,11 +50,14 @@ class TruConsent extends StatelessWidget {
       organizationId: organizationId,
       bannerId: bannerId,
       userId: userId,
+      assetId: assetId,
       apiBaseUrl: apiBaseUrl,
       logoUrl: logoUrl,
       companyName: companyName,
+      token: token,
+      authToken: authToken,
       onClose: onClose,
+      onSubmit: onSubmit,
     );
   }
 }
-

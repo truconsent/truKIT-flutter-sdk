@@ -1,6 +1,8 @@
 /// ModernPurposeCard - Flutter purpose card widget
 import 'package:flutter/material.dart' hide Banner;
 import '../models/banner.dart' as models;
+import '../utils/i18n.dart';
+import '../services/banner_theme.dart';
 import 'collapsible_data_section.dart';
 
 class ModernPurposeCard extends StatefulWidget {
@@ -8,6 +10,10 @@ class ModernPurposeCard extends StatefulWidget {
   final models.Banner banner;
   final Function(String, String) onToggle;
   final bool readOnly;
+  final BannerTheme? theme;
+  /// Translates dynamic (server-supplied) text via the banner's translation
+  /// snapshot. Identity function if omitted.
+  final String Function(String)? translate;
 
   const ModernPurposeCard({
     super.key,
@@ -15,6 +21,8 @@ class ModernPurposeCard extends StatefulWidget {
     required this.banner,
     required this.onToggle,
     this.readOnly = false,
+    this.theme,
+    this.translate,
   });
 
   @override
@@ -24,32 +32,85 @@ class ModernPurposeCard extends StatefulWidget {
 class _ModernPurposeCardState extends State<ModernPurposeCard> {
   String? _openSection;
 
+  String _localize(String text) => (widget.translate ?? (t) => t)(text);
+
+  /// For static UI microcopy (badges, section titles): prefer the
+  /// server-driven snapshot (covers every language the admin actually
+  /// configured, matching truKIT-NPM's translateDynamic usage for this exact
+  /// same copy), falling back to the static I18n bundle (only covers
+  /// en/hi/ta) so those two languages keep working even with no snapshot.
+  String _tr(String text, [String? i18nKey]) {
+    final snapshotResult = widget.translate != null ? widget.translate!(text) : text;
+    if (snapshotResult != text) return snapshotResult;
+    return i18nKey != null ? I18n.t(i18nKey) : text;
+  }
+
   void _toggleSection(String section) {
     setState(() {
       _openSection = _openSection == section ? null : section;
     });
   }
 
+  String get _expiryText {
+    final label = widget.purpose.expiryLabel;
+    if (label != null && label.trim().isNotEmpty) return label;
+
+    final period = widget.purpose.expiryPeriod.trim();
+    if (period.isEmpty) return '';
+
+    final lower = period.toLowerCase();
+    if (lower == 'one_time' || lower == 'one_off' || lower == 'never') {
+      return 'Until withdrawn';
+    }
+    // UUID-shaped values are internal references (e.g. to another purpose),
+    // not human-readable durations.
+    final uuidPattern = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    );
+    if (uuidPattern.hasMatch(period)) return 'Until withdrawn';
+
+    return period;
+  }
+
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<Locale>(
+      valueListenable: I18n.localeNotifier,
+      builder: (context, locale, _) => _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
+    final theme = widget.theme ?? const BannerTheme(
+      background: Color(0xFFFFFFFF),
+      text: Color(0xFF111827),
+      textMuted: Color(0xFF6B7280),
+      button: Color(0xFF3B82F6),
+      buttonText: Color(0xFFFFFFFF),
+      border: Color(0xFFE5E7EB),
+      fontSize: 16,
+    );
     final screenSize = MediaQuery.of(context).size;
     final isMobile = screenSize.width < 600;
-    
+
     final isAccepted = widget.purpose.consented == 'accepted';
     final dataElements = widget.purpose.dataElements ?? [];
     final processingActivities = widget.purpose.processingActivities ?? [];
-    final legalEntities = widget.purpose.legalEntities ?? [];
-    final tools = widget.purpose.tools ?? [];
+    // Matches truKIT-NPM's ModernPurposeCard.jsx: legal entities and tools
+    // are combined into a single flat "Data Processors" list, not split
+    // into two labeled subsections.
+    final dataProcessors = [
+      ...(widget.purpose.legalEntities ?? []),
+      ...(widget.purpose.tools ?? []),
+    ];
 
     return Container(
       padding: EdgeInsets.all(isMobile ? 12 : 16),
       decoration: BoxDecoration(
-        border: Border.all(
-          color: isAccepted ? Colors.green[300]! : Colors.grey[300]!,
-          width: 1.5,
-        ),
+        border: Border.all(color: theme.border, width: 1.5),
         borderRadius: BorderRadius.circular(12),
-        color: isAccepted ? Colors.green[50] : Colors.white,
+        color: theme.background,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -68,11 +129,12 @@ class _ModernPurposeCardState extends State<ModernPurposeCard> {
                       children: [
                         Expanded(
                           child: Text(
-                            widget.purpose.name,
+                            _localize(widget.purpose.name),
                             style: TextStyle(
                               fontSize: isMobile ? 15 : 16,
                               fontWeight: FontWeight.w700,
-                              color: Colors.grey[900],
+                              color: theme.text,
+                              fontFamily: theme.fontFamily,
                             ),
                           ),
                         ),
@@ -92,11 +154,12 @@ class _ModernPurposeCardState extends State<ModernPurposeCard> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              'Mandatory',
+                              _tr('Necessary', 'necessary_group'),
                               style: TextStyle(
                                 fontSize: isMobile ? 9 : 10,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.red[700],
+                                fontFamily: theme.fontFamily,
                               ),
                             ),
                           ),
@@ -105,70 +168,103 @@ class _ModernPurposeCardState extends State<ModernPurposeCard> {
                     SizedBox(height: isMobile ? 6 : 8),
                     // Description
                     Text(
-                      widget.purpose.description,
+                      _localize(widget.purpose.description),
                       style: TextStyle(
                         fontSize: isMobile ? 12 : 14,
-                        color: Colors.grey[700],
+                        color: theme.textMuted,
+                        fontFamily: theme.fontFamily,
                         height: 1.4,
                       ),
                     ),
                     SizedBox(height: isMobile ? 8 : 12),
                     // Expiry info
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isMobile ? 8 : 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.amber[50],
-                        border: Border.all(color: Colors.amber[200]!),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        'Expires: ',
-                        style: TextStyle(
-                          fontSize: isMobile ? 10 : 12,
-                          color: Colors.amber[900],
-                          fontWeight: FontWeight.w500,
+                    if (_expiryText.isNotEmpty)
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isMobile ? 8 : 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.background,
+                          border: Border.all(color: theme.border),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Expires: $_expiryText',
+                          style: TextStyle(
+                            fontSize: isMobile ? 10 : 12,
+                            color: theme.text,
+                            fontWeight: FontWeight.w500,
+                            fontFamily: theme.fontFamily,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),
               SizedBox(width: isMobile ? 8 : 12),
-              // Toggle Switch
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Transform.scale(
-                    scale: isMobile ? 0.8 : 1.0,
-                    child: Switch(
-                      value: isAccepted,
-                      onChanged: widget.readOnly || widget.purpose.isMandatory || widget.purpose.isLegitimate
-                          ? null
-                          : (value) {
-                              widget.onToggle(
-                                widget.purpose.id,
-                                value ? 'accepted' : 'declined',
-                              );
-                            },
-                      activeThumbColor: Colors.green[600],
-                      inactiveThumbColor: Colors.grey[400],
+              // Toggle Switch — matches truKIT-NPM's ModernPurposeCard.jsx: a
+              // Legitimate Interest purpose has no accept/decline concept, so
+              // nothing renders here at all, not even a disabled switch.
+              if (!widget.purpose.isLegitimate)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Transform.scale(
+                      scale: isMobile ? 0.8 : 1.0,
+                      // Material3's Switch renders a visibly larger thumb when
+                      // selected than when unselected (its own spec, not
+                      // something thumbColor/trackColor control) — that made
+                      // the "same thumb color/size on and off" parity fix
+                      // above look inconsistent between states. Material2's
+                      // Switch keeps a constant thumb size in both states,
+                      // matching truKIT-NPM's plain CSS toggle exactly.
+                      child: Theme(
+                        data: ThemeData(
+                          useMaterial3: false,
+                          brightness: Theme.of(context).brightness,
+                        ),
+                        child: Switch(
+                          value: isAccepted,
+                          // Matches truKIT-NPM/truKIT-react-native: mandatory purposes stay
+                          // interactive — declining one is caught by the H-Case intercept at
+                          // submit time, not prevented here.
+                          onChanged: widget.readOnly
+                              ? null
+                              : (value) {
+                                  widget.onToggle(
+                                    widget.purpose.id,
+                                    value ? 'accepted' : 'declined',
+                                  );
+                                },
+                          // Uses WidgetStateProperty (not the activeThumbColor/
+                          // activeTrackColor shorthand) so a mandatory purpose's
+                          // switch looks identical whether interactive or read-only —
+                          // the shorthand params don't apply to the disabled state.
+                          // Matches truKIT-NPM's .thumb/.track exactly: the thumb is
+                          // the same color on and off (the primary BUTTON text
+                          // color, not the body text color — the track alone
+                          // carries the on/off signal via its own color change).
+                          thumbColor: WidgetStatePropertyAll<Color>(theme.buttonText),
+                          trackColor: WidgetStateProperty.resolveWith<Color>(
+                            (states) => states.contains(WidgetState.selected)
+                                ? theme.button
+                                : theme.border,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                  Text(
-                    isAccepted ? 'Accepted' : 'Declined',
-                    style: TextStyle(
-                      fontSize: isMobile ? 10 : 11,
-                      fontWeight: FontWeight.w600,
-                      color: isAccepted
-                          ? Colors.green[700]
-                          : Colors.grey[600],
+                    Text(
+                      isAccepted ? 'Accepted' : 'Declined',
+                      style: TextStyle(
+                        fontSize: isMobile ? 10 : 11,
+                        fontWeight: FontWeight.w600,
+                        color: isAccepted ? Colors.green[700] : theme.textMuted,
+                        fontFamily: theme.fontFamily,
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
             ],
           ),
 
@@ -176,143 +272,41 @@ class _ModernPurposeCardState extends State<ModernPurposeCard> {
           if (dataElements.isNotEmpty) ...[
             SizedBox(height: isMobile ? 10 : 12),
             CollapsibleDataSection(
-              title: 'Data Elements',
+              title: _tr('Data Elements', 'data_elements'),
               items: dataElements,
               isOpen: _openSection == 'data_elements',
               onToggle: () => _toggleSection('data_elements'),
+              translate: widget.translate,
+              theme: theme,
             ),
           ],
 
-          // Data Processors Section
-          if (legalEntities.isNotEmpty || tools.isNotEmpty) ...[
+          // Data Processors Section — matches truKIT-NPM's
+          // ModernPurposeCard.jsx: legal entities and tools are combined
+          // into a single flat "Data Processors" list, not split into two
+          // labeled subsections.
+          if (dataProcessors.isNotEmpty) ...[
             SizedBox(height: isMobile ? 8 : 12),
-            Divider(
-              height: 1,
-              color: Colors.grey[200],
-              thickness: 1,
+            CollapsibleDataSection(
+              title: _tr('Data Processors', 'data_processors'),
+              items: dataProcessors,
+              isOpen: _openSection == 'data_processors',
+              onToggle: () => _toggleSection('data_processors'),
+              translate: widget.translate,
+              theme: theme,
             ),
-            InkWell(
-              onTap: () => _toggleSection('data_processors'),
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: isMobile ? 10 : 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Data Processors',
-                      style: TextStyle(
-                        fontSize: isMobile ? 13 : 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[800],
-                      ),
-                    ),
-                    Icon(
-                      _openSection == 'data_processors'
-                          ? Icons.expand_less
-                          : Icons.expand_more,
-                      size: isMobile ? 20 : 24,
-                      color: Colors.grey[600],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (_openSection == 'data_processors')
-              Padding(
-                padding: EdgeInsets.only(top: isMobile ? 8 : 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (legalEntities.isNotEmpty) ...[
-                      Text(
-                        'Legal Entities ()',
-                        style: TextStyle(
-                          fontSize: isMobile ? 11 : 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      SizedBox(height: isMobile ? 6 : 8),
-                      Wrap(
-                        spacing: isMobile ? 6 : 8,
-                        runSpacing: isMobile ? 6 : 8,
-                        children: legalEntities
-                            .map((e) => Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: isMobile ? 8 : 10,
-                                    vertical: isMobile ? 4 : 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue[50],
-                                    border: Border.all(
-                                      color: Colors.blue[200]!,
-                                      width: 0.5,
-                                    ),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Text(
-                                    e.name,
-                                    style: TextStyle(
-                                      fontSize: isMobile ? 11 : 13,
-                                      color: Colors.blue[900],
-                                    ),
-                                  ),
-                                ))
-                            .toList(),
-                      ),
-                      SizedBox(height: isMobile ? 10 : 12),
-                    ],
-                    if (tools.isNotEmpty) ...[
-                      Text(
-                        'Tools ()',
-                        style: TextStyle(
-                          fontSize: isMobile ? 11 : 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      SizedBox(height: isMobile ? 6 : 8),
-                      Wrap(
-                        spacing: isMobile ? 6 : 8,
-                        runSpacing: isMobile ? 6 : 8,
-                        children: tools
-                            .map((t) => Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: isMobile ? 8 : 10,
-                                    vertical: isMobile ? 4 : 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.purple[50],
-                                    border: Border.all(
-                                      color: Colors.purple[200]!,
-                                      width: 0.5,
-                                    ),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Text(
-                                    t.name,
-                                    style: TextStyle(
-                                      fontSize: isMobile ? 11 : 13,
-                                      color: Colors.purple[900],
-                                    ),
-                                  ),
-                                ))
-                            .toList(),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
           ],
 
           // Processing Activities Section
           if (processingActivities.isNotEmpty) ...[
             SizedBox(height: isMobile ? 8 : 12),
             CollapsibleDataSection(
-              title: 'Processing Activities',
+              title: _tr('Processing Activities', 'processing_activities'),
               items: processingActivities,
               isOpen: _openSection == 'processing_activities',
               onToggle: () => _toggleSection('processing_activities'),
+              translate: widget.translate,
+              theme: theme,
             ),
           ],
         ],

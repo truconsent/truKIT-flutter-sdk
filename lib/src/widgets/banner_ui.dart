@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart' hide Banner;
 import '../models/banner.dart' as models;
 import '../services/consent_manager.dart';
+import '../services/banner_theme.dart';
+import '../utils/i18n.dart';
 import 'modern_banner_header.dart';
 import 'modern_purpose_card.dart';
 import 'modern_banner_footer.dart';
@@ -18,6 +20,14 @@ class BannerUI extends StatefulWidget {
   final VoidCallback onRejectAll;
   final VoidCallback onConsentAll;
   final VoidCallback onAcceptSelected;
+  final VoidCallback onAcceptMandatory;
+  final bool hasUserInteracted;
+  /// Matches truKIT-NPM's BannerUI.jsx `isBottomReached` — whether the user
+  /// has scrolled through every purpose. Gates Reject All/Only Necessary/I
+  /// Consent until true, unless there's only a single optional purpose (no
+  /// scroll needed then). Defaults to `true` (no gating) for callers that
+  /// don't track scroll position.
+  final bool isBottomReached;
   final VoidCallback? onNoticeShown;
   final bool showHCaseWarning;
   final String? hCaseStrategy;
@@ -28,6 +38,16 @@ class BannerUI extends StatefulWidget {
   final VoidCallback? onHCaseBack;
   final String? primaryColor;
   final String? secondaryColor;
+  /// "Common Appearance" theme (background/text/button colors, font) from
+  /// the admin dashboard. Derived from `banner.bannerSettings` if omitted.
+  final BannerTheme? theme;
+  /// Translates dynamic (server-supplied) text via the banner's translation
+  /// snapshot. Identity function if omitted.
+  final String Function(String)? translate;
+  final String selectedLanguage;
+  final List<String> availableLanguages;
+  final Map<String, String> languageLabels;
+  final void Function(String)? onLanguageChange;
 
   const BannerUI({
     super.key,
@@ -38,6 +58,9 @@ class BannerUI extends StatefulWidget {
     required this.onRejectAll,
     required this.onConsentAll,
     required this.onAcceptSelected,
+    required this.onAcceptMandatory,
+    this.hasUserInteracted = false,
+    this.isBottomReached = true,
     this.onNoticeShown,
     this.showHCaseWarning = false,
     this.hCaseStrategy,
@@ -48,6 +71,12 @@ class BannerUI extends StatefulWidget {
     this.onHCaseBack,
     this.primaryColor,
     this.secondaryColor,
+    this.theme,
+    this.translate,
+    this.selectedLanguage = 'en',
+    this.availableLanguages = const [],
+    this.languageLabels = const {},
+    this.onLanguageChange,
   });
 
   @override
@@ -64,6 +93,9 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
     _uiState = deriveUIState(widget.banner.purposes);
     final tabCount = _tabCount();
     _tabController = TabController(length: tabCount, vsync: this);
+    // Rebuilds the footer so it can switch between the "Next" button and the
+    // real accept/reject actions as the active tab changes (see _buildActions).
+    _tabController.addListener(() => setState(() {}));
   }
 
   @override
@@ -74,6 +106,7 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
     if (_tabController.length != tabCount) {
       _tabController.dispose();
       _tabController = TabController(length: tabCount, vsync: this);
+      _tabController.addListener(() => setState(() {}));
     }
   }
 
@@ -91,24 +124,43 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
   }
 
   Color _parseColor(String? colorString) {
-    if (colorString == null) return const Color(0xFF7030bc);
+    if (colorString == null) return const Color(0xFF3b82f6);
     try {
       return Color(int.parse(colorString.replaceFirst('#', '0xFF')));
     } catch (e) {
-      return const Color(0xFF7030bc);
+      return const Color(0xFF3b82f6);
     }
+  }
+
+  BannerTheme get _theme => widget.theme ?? BannerTheme.from(widget.banner.bannerSettings);
+  String Function(String) get _translate => widget.translate ?? (t) => t;
+
+  /// For static UI microcopy (tab labels, group headers, empty states):
+  /// prefer the server-driven snapshot (covers every language the admin
+  /// actually configured, matching truKIT-NPM's translate() usage for this
+  /// exact same copy), falling back to the static I18n bundle (only covers
+  /// en/hi/ta) so those two languages keep working even with no snapshot.
+  String _tr(String text, [String? i18nKey]) {
+    final snapshotResult = _translate(text);
+    if (snapshotResult != text) return snapshotResult;
+    return i18nKey != null ? I18n.t(i18nKey) : text;
   }
 
   @override
   Widget build(BuildContext context) {
     final settings = widget.banner.bannerSettings;
-    final finalPrimaryColor = settings?.primaryColor ?? widget.primaryColor ?? '#7030bc';
+    final theme = _theme;
+    // buttonColor takes priority over primaryColor, matching truKIT-NPM's
+    // `settings.buttonColor || settings.primaryColor` fallback chain.
+    final finalPrimaryColor =
+        settings?.buttonColor ?? settings?.primaryColor ?? widget.primaryColor ?? '#3b82f6';
     final parsedPrimaryColor = _parseColor(finalPrimaryColor);
     final footerText = settings?.footerText ??
         'Review our [Privacy Policy] and [Transparency Centre], [DPO Details]. Use the [Rights Centre] anytime to withdraw consent, delete data, name a nominee, or raise a grievance.';
     final bannerTitle = settings?.bannerTitle;
     final disclaimerText = settings?.disclaimerText;
-    final actionButtonText = settings?.actionButtonText ?? 'Accept All';
+    final actionButtonText =
+        settings?.actionButtonText ?? settings?.acceptAllText ?? 'Accept All';
 
     final screenSize = MediaQuery.of(context).size;
     final isMobile = screenSize.width < 768;
@@ -122,6 +174,7 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
       actionButtonText: actionButtonText,
       parsedPrimaryColor: parsedPrimaryColor,
       finalPrimaryColor: finalPrimaryColor,
+      theme: theme,
     );
 
     if (widget.showHCaseWarning) {
@@ -143,6 +196,12 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
                   onProceed: widget.onHCaseProceed ?? () {},
                   onBack: widget.onHCaseBack,
                   primaryColor: parsedPrimaryColor,
+                  proceedColor: settings?.hCaseProceedButtonColor != null
+                      ? _parseColor(settings!.hCaseProceedButtonColor)
+                      : null,
+                  backColor: settings?.hCaseBackButtonColor != null
+                      ? _parseColor(settings!.hCaseBackButtonColor)
+                      : null,
                 ),
               ),
             ),
@@ -163,10 +222,11 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
     required String actionButtonText,
     required Color parsedPrimaryColor,
     required String finalPrimaryColor,
+    required BannerTheme theme,
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.background,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -182,11 +242,7 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
           // Header
           Container(
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.blue.shade50, Colors.purple.shade50],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              color: theme.background,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(20),
                 topRight: Radius.circular(20),
@@ -197,6 +253,12 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
               orgName: widget.companyName,
               bannerTitle: bannerTitle,
               disclaimerText: disclaimerText,
+              theme: theme,
+              translate: _translate,
+              selectedLanguage: widget.selectedLanguage,
+              availableLanguages: widget.availableLanguages,
+              languageLabels: widget.languageLabels,
+              onLanguageChange: widget.onLanguageChange,
             ),
           ),
 
@@ -206,13 +268,13 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
               horizontal: isMobile ? 12 : 24,
               vertical: isMobile ? 16 : 20,
             ),
-            child: _buildPurposesSection(isMobile, parsedPrimaryColor),
+            child: _buildPurposesSection(isMobile, parsedPrimaryColor, theme),
           ),
 
           // Footer
           Container(
             decoration: BoxDecoration(
-              color: Colors.grey[50],
+              color: theme.background,
               borderRadius: const BorderRadius.only(
                 bottomLeft: Radius.circular(20),
                 bottomRight: Radius.circular(20),
@@ -222,7 +284,7 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
               children: [
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.grey[100],
+                    color: Colors.grey.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   margin: EdgeInsets.symmetric(
@@ -232,12 +294,16 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
                   child: ModernBannerFooter(
                     footerText: footerText,
                     orgName: widget.companyName,
+                    theme: theme,
+                    translate: _translate,
                   ),
                 ),
                 _buildActions(
                   isMobile: isMobile,
                   actionButtonText: actionButtonText,
                   finalPrimaryColor: finalPrimaryColor,
+                  theme: theme,
+                  settings: settings,
                 ),
               ],
             ),
@@ -247,27 +313,28 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
     );
   }
 
-  Widget _buildPurposesSection(bool isMobile, Color primaryColor) {
+  Widget _buildPurposesSection(bool isMobile, Color primaryColor, BannerTheme theme) {
     switch (_uiState.bannerCase) {
       case models.BannerCase.noticeOnly:
-        return _buildNoticeOnlySection(isMobile);
+        return _buildNoticeOnlySection(isMobile, theme);
       case models.BannerCase.tabbed:
-        return _buildTabbedSection(isMobile, primaryColor);
+        return _buildTabbedSection(isMobile, primaryColor, theme);
       case models.BannerCase.normal:
-        return _buildNormalSection(isMobile);
+        return _buildNormalSection(isMobile, theme);
     }
   }
 
-  Widget _buildNoticeOnlySection(bool isMobile) {
+  Widget _buildNoticeOnlySection(bool isMobile, BannerTheme theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Informational',
+          _tr('Informational', 'informational'),
           style: TextStyle(
             fontSize: isMobile ? 14 : 16,
             fontWeight: FontWeight.w600,
-            color: Colors.grey[800],
+            color: theme.textMuted,
+            fontFamily: theme.fontFamily,
           ),
         ),
         SizedBox(height: isMobile ? 12 : 16),
@@ -278,17 +345,25 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
                 banner: widget.banner,
                 onToggle: widget.onChangePurpose,
                 readOnly: true,
+                theme: theme,
+                translate: _translate,
               ),
             )),
       ],
     );
   }
 
-  Widget _buildTabbedSection(bool isMobile, Color primaryColor) {
+  Widget _buildTabbedSection(bool isMobile, Color primaryColor, BannerTheme theme) {
+    // Tab(text:) renders through TabBar's own default label style, which
+    // can't take a custom fontFamily — Tab(child:) is required to apply the
+    // admin-configured font to the tab labels.
+    Tab buildTab(String label) => Tab(
+          child: Text(label, style: TextStyle(fontFamily: theme.fontFamily)),
+        );
     final tabs = <Tab>[
-      const Tab(text: 'Informational'),
-      const Tab(text: 'Consent'),
-      if (widget.banner.reconsentMode) const Tab(text: 'Re-consent'),
+      buildTab(_tr('Informational', 'informational')),
+      buildTab(_tr('Consent', 'consent')),
+      if (widget.banner.reconsentMode) buildTab(_tr('Re-consent')),
     ];
 
     return Column(
@@ -296,7 +371,7 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
         TabBar(
           controller: _tabController,
           labelColor: primaryColor,
-          unselectedLabelColor: Colors.grey[600],
+          unselectedLabelColor: theme.textMuted,
           indicatorColor: primaryColor,
           tabs: tabs,
         ),
@@ -318,6 +393,8 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
                               banner: widget.banner,
                               onToggle: widget.onChangePurpose,
                               readOnly: true,
+                              theme: theme,
+                              translate: _translate,
                             ),
                           ))
                       .toList(),
@@ -326,7 +403,7 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
               // Consent tab
               SingleChildScrollView(
                 padding: EdgeInsets.only(top: isMobile ? 12 : 16),
-                child: _buildConsentPurposes(isMobile),
+                child: _buildConsentPurposes(isMobile, theme),
               ),
               if (widget.banner.reconsentMode)
                 SingleChildScrollView(
@@ -335,8 +412,12 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Updated consent required',
-                        style: TextStyle(fontSize: isMobile ? 13 : 14, color: Colors.grey[700]),
+                        _tr('Updated consent required'),
+                        style: TextStyle(
+                          fontSize: isMobile ? 13 : 14,
+                          color: theme.textMuted,
+                          fontFamily: theme.fontFamily,
+                        ),
                       ),
                       ..._uiState.consentPurposes
                           .map((p) => Padding(
@@ -345,6 +426,8 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
                                   purpose: p,
                                   banner: widget.banner,
                                   onToggle: widget.onChangePurpose,
+                                  theme: theme,
+                                  translate: _translate,
                                 ),
                               ))
                           .toList(),
@@ -358,26 +441,27 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
     );
   }
 
-  Widget _buildNormalSection(bool isMobile) {
+  Widget _buildNormalSection(bool isMobile, BannerTheme theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (widget.banner.purposes.isNotEmpty)
           Text(
-            'Consent Preferences',
+            _tr('Consent Preferences'),
             style: TextStyle(
               fontSize: isMobile ? 14 : 16,
               fontWeight: FontWeight.w600,
-              color: Colors.grey[800],
+              color: theme.textMuted,
+              fontFamily: theme.fontFamily,
             ),
           ),
         if (widget.banner.purposes.isNotEmpty) SizedBox(height: isMobile ? 12 : 16),
-        _buildConsentPurposes(isMobile),
+        _buildConsentPurposes(isMobile, theme),
       ],
     );
   }
 
-  Widget _buildConsentPurposes(bool isMobile) {
+  Widget _buildConsentPurposes(bool isMobile, BannerTheme theme) {
     final mandatory = _uiState.mandatoryConsentPurposes;
     final optional = _uiState.optionalConsentPurposes;
 
@@ -385,7 +469,7 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (mandatory.isNotEmpty) ...[
-          _buildGroupHeader('Necessary', isMobile),
+          _buildGroupHeader('Necessary', isMobile, theme),
           SizedBox(height: isMobile ? 8 : 10),
           ...mandatory.map((p) => Padding(
                 padding: EdgeInsets.only(bottom: isMobile ? 10 : 12),
@@ -393,12 +477,14 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
                   purpose: p,
                   banner: widget.banner,
                   onToggle: widget.onChangePurpose,
+                  theme: theme,
+                  translate: _translate,
                 ),
               )),
         ],
         if (optional.isNotEmpty) ...[
           SizedBox(height: isMobile ? 8 : 12),
-          _buildGroupHeader('Optional', isMobile),
+          _buildGroupHeader('Optional', isMobile, theme),
           SizedBox(height: isMobile ? 8 : 10),
           ...optional.map((p) => Padding(
                 padding: EdgeInsets.only(bottom: isMobile ? 10 : 12),
@@ -406,6 +492,8 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
                   purpose: p,
                   banner: widget.banner,
                   onToggle: widget.onChangePurpose,
+                  theme: theme,
+                  translate: _translate,
                 ),
               )),
         ],
@@ -417,19 +505,27 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
                   purpose: p,
                   banner: widget.banner,
                   onToggle: widget.onChangePurpose,
+                  theme: theme,
+                  translate: _translate,
                 ),
               )),
       ],
     );
   }
 
-  Widget _buildGroupHeader(String label, bool isMobile) {
+  Widget _buildGroupHeader(String label, bool isMobile, BannerTheme theme) {
+    final i18nKey = label == 'Necessary'
+        ? 'necessary_group'
+        : label == 'Optional'
+            ? 'optional_group'
+            : null;
     return Text(
-      label,
+      _tr(label, i18nKey),
       style: TextStyle(
         fontSize: isMobile ? 12 : 13,
         fontWeight: FontWeight.w700,
-        color: Colors.grey[500],
+        color: theme.textMuted,
+        fontFamily: theme.fontFamily,
         letterSpacing: 0.5,
       ),
     );
@@ -439,6 +535,8 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
     required bool isMobile,
     required String actionButtonText,
     required String finalPrimaryColor,
+    required BannerTheme theme,
+    required models.BannerSettings? settings,
   }) {
     if (_uiState.bannerCase == models.BannerCase.noticeOnly) {
       // Notice-only: show "I Understand" button
@@ -453,16 +551,55 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
             onPressed: widget.onNoticeShown,
             style: ElevatedButton.styleFrom(
               backgroundColor: _parseColor(finalPrimaryColor),
-              foregroundColor: Colors.white,
+              foregroundColor: theme.buttonText,
               padding: EdgeInsets.symmetric(vertical: isMobile ? 13 : 14),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
               elevation: 0,
             ),
-            child: const Text(
+            child: Text(
               'I Understand',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                fontFamily: theme.fontFamily,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Tabbed case: matches truKIT-NPM's TabbedBannerUI.jsx — the accept/reject/
+    // only-necessary decision only belongs on the final tab (the actual Consent
+    // tab). Every earlier tab (Informational, and Consent itself when a
+    // Re-consent tab follows it) only ever advances via "Next".
+    if (_uiState.bannerCase == models.BannerCase.tabbed &&
+        _tabController.index != _tabController.length - 1) {
+      return Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 12 : 24,
+          vertical: isMobile ? 12 : 16,
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => _tabController.animateTo(_tabController.index + 1),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _parseColor(finalPrimaryColor),
+              foregroundColor: theme.buttonText,
+              padding: EdgeInsets.symmetric(vertical: isMobile ? 13 : 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
+            ),
+            child: Text(
+              _tr('Next', 'next'),
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                fontFamily: theme.fontFamily,
+              ),
             ),
           ),
         ),
@@ -473,9 +610,18 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
       onRejectAll: widget.onRejectAll,
       onConsentAll: widget.onConsentAll,
       onAcceptSelected: widget.onAcceptSelected,
+      onAcceptMandatory: widget.onAcceptMandatory,
+      hasUserInteracted: widget.hasUserInteracted,
+      isBottomReached: widget.isBottomReached,
       purposes: widget.banner.purposes,
       actionButtonText: actionButtonText,
       primaryColor: finalPrimaryColor,
+      theme: theme,
+      rejectAllColor: settings?.rejectAllColor,
+      rejectAllText: settings?.rejectAllText,
+      onlyNecessaryColor: settings?.onlyNecessaryColor,
+      onlyNecessaryText: settings?.onlyNecessaryText,
+      translate: _translate,
     );
   }
 

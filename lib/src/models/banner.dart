@@ -65,6 +65,11 @@ class Banner {
   final String? expiryReconsentRequestId;
   final String? consentStatus;
 
+  /// Server-driven translations for dynamic content (purpose names/
+  /// descriptions, banner title/disclaimer/footer) — see
+  /// `translation_snapshot.dart`.
+  final TranslationSnapshot? translationsSnapshot;
+
   Banner({
     required this.bannerId,
     required this.collectionPoint,
@@ -89,6 +94,7 @@ class Banner {
     this.reconsentSource,
     this.expiryReconsentRequestId,
     this.consentStatus,
+    this.translationsSnapshot,
   });
 
   factory Banner.fromJson(Map<String, dynamic> json) {
@@ -133,8 +139,60 @@ class Banner {
       reconsentSource: json['reconsent_source'],
       expiryReconsentRequestId: json['expiry_reconsent_request_id'],
       consentStatus: json['consent_status'] ?? json['data']?['consentStatus'],
+      translationsSnapshot: TranslationSnapshot.fromJson(
+        json['translationsSnapshot'] ?? json['translations_snapshot'],
+      ),
     );
   }
+}
+
+/// Server-driven translations for dynamic (per-banner) content. Mirrors
+/// truKIT-NPM's `src/runtime/TranslationContext.jsx` data shape.
+class TranslationSnapshot {
+  /// `{ sourceText: { languageCode: translatedText } }`
+  final Map<String, Map<String, String>>? textMap;
+  final List<LanguageInfo>? languages;
+
+  TranslationSnapshot({this.textMap, this.languages});
+
+  static TranslationSnapshot? fromJson(dynamic json) {
+    if (json == null || json is! Map) return null;
+    final rawTextMap = json['text_map'] ?? json['textMap'];
+    Map<String, Map<String, String>>? textMap;
+    if (rawTextMap is Map) {
+      textMap = {};
+      rawTextMap.forEach((key, value) {
+        if (value is Map) {
+          textMap![key.toString()] = value.map(
+            (k, v) => MapEntry(k.toString(), v?.toString() ?? ''),
+          );
+        }
+      });
+    }
+    final rawLanguages = json['languages'];
+    List<LanguageInfo>? languages;
+    if (rawLanguages is List) {
+      languages = rawLanguages
+          .whereType<Map>()
+          .map((l) => LanguageInfo(
+                code: (l['code'] ?? '').toString(),
+                // The real API sends `name` (e.g. { code: 'as', name:
+                // 'অসমীয়া' }), not `label` — confirmed against the live
+                // trukit-dev API response. `label` is kept as a defensive
+                // fallback only.
+                label: (l['name'] ?? l['label'] ?? '').toString(),
+              ))
+          .where((l) => l.code.isNotEmpty)
+          .toList();
+    }
+    return TranslationSnapshot(textMap: textMap, languages: languages);
+  }
+}
+
+class LanguageInfo {
+  final String code;
+  final String label;
+  LanguageInfo({required this.code, required this.label});
 }
 
 /// Represents a consent purpose in the banner.
@@ -479,7 +537,26 @@ class BannerSettings {
   final String? fontSize;
   final String? primaryColor;
   final String? secondaryColor;
+  // "Common Appearance" fields from the admin dashboard — drive the
+  // banner's background/text/button colors. Mirrors truKIT-NPM's
+  // normalizeBannerSettings() (TruConsentModal.jsx), which reads these same
+  // fields (camelCase or snake_case) for its `styleVars`.
+  final String? backgroundColor;
+  final String? primaryTextColor;
+  final String? secondaryTextColor;
+  final String? buttonColor;
+  final String? buttonTextColor;
   final String? actionButtonText;
+  // Per-notice "Global Settings" button overrides — separate from Common
+  // Appearance. Mirrors truKIT-NPM's normalizeBannerSettings()/
+  // ModernBannerActions.jsx, which reads these same fields to style the
+  // Reject All / Only Necessary buttons (Accept All continues to use
+  // buttonColor/buttonTextColor above).
+  final String? rejectAllColor;
+  final String? rejectAllText;
+  final String? onlyNecessaryColor;
+  final String? onlyNecessaryText;
+  final String? acceptAllText;
   final String? warningText;
   final String? logoUrl;
   final String? bannerTitle;
@@ -498,12 +575,29 @@ class BannerSettings {
   // Default selection
   final String? defaultSelection;
 
+  /// Selects which banner template/layout to render. One of:
+  /// `tabbed_banner`, `center_modal`, `preferences_modal`, `floating_card`,
+  /// `notice_only`, `inline_single_row`, `general_compact_list`,
+  /// `general_split_pane`. Unrecognized/absent values fall back to
+  /// `tabbed_banner` (see `template_registry.dart`).
+  final String? generalNoticeTemplate;
+
   BannerSettings({
     this.fontType,
     this.fontSize,
     this.primaryColor,
     this.secondaryColor,
+    this.backgroundColor,
+    this.primaryTextColor,
+    this.secondaryTextColor,
+    this.buttonColor,
+    this.buttonTextColor,
     this.actionButtonText,
+    this.rejectAllColor,
+    this.rejectAllText,
+    this.onlyNecessaryColor,
+    this.onlyNecessaryText,
+    this.acceptAllText,
     this.warningText,
     this.logoUrl,
     this.bannerTitle,
@@ -517,6 +611,7 @@ class BannerSettings {
     this.hCaseProceedButtonColor,
     this.hCaseBackButtonColor,
     this.defaultSelection,
+    this.generalNoticeTemplate,
   });
 
   factory BannerSettings.fromJson(Map<String, dynamic> json) {
@@ -525,7 +620,17 @@ class BannerSettings {
       fontSize: json['font_size'],
       primaryColor: json['primary_color'],
       secondaryColor: json['secondary_color'],
+      backgroundColor: json['background_color'] ?? json['backgroundColor'],
+      primaryTextColor: json['primary_text_color'] ?? json['primaryTextColor'],
+      secondaryTextColor: json['secondary_text_color'] ?? json['secondaryTextColor'],
+      buttonColor: json['button_color'] ?? json['buttonColor'],
+      buttonTextColor: json['button_text_color'] ?? json['buttonTextColor'],
       actionButtonText: json['action_button_text'],
+      rejectAllColor: json['reject_all_color'] ?? json['rejectAllColor'],
+      rejectAllText: json['reject_all_text'] ?? json['rejectAllText'],
+      onlyNecessaryColor: json['only_necessary_color'] ?? json['onlyNecessaryColor'],
+      onlyNecessaryText: json['only_necessary_text'] ?? json['onlyNecessaryText'],
+      acceptAllText: json['accept_all_text'] ?? json['acceptAllText'],
       warningText: json['warning_text'],
       logoUrl: json['logo_url'],
       bannerTitle: json['banner_title'],
@@ -539,6 +644,8 @@ class BannerSettings {
       hCaseProceedButtonColor: json['h_case_proceed_button_color'],
       hCaseBackButtonColor: json['h_case_back_button_color'],
       defaultSelection: json['default_selection'],
+      generalNoticeTemplate:
+          json['general_notice_template'] ?? json['generalNoticeTemplate'],
     );
   }
 }

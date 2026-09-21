@@ -16,5 +16,10 @@ const Map<String, String> hiTranslations = {
   'tools': 'उपकरण',
   'processing_activities': 'प्रसंस्करण गतिविधियां',
   'data_processors': 'डेटा प्रोसेसर',
+  'informational': 'सूचनात्मक',
+  'next': 'आगे',
+  'consent': 'सहमति',
+  'necessary_group': 'आवश्यक',
+  'optional_group': 'वैकल्पिक',
 };
 

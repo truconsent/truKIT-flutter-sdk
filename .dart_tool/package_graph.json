@@ -5,7 +5,7 @@
   "packages": [
     {
       "name": "truconsent_consent_notice_flutter",
-      "version": "0.1.4",
+      "version": "0.1.6",
       "dependencies": [
         "flutter",
         "flutter_localizations",
@@ -14,6 +14,7 @@
         "provider",
         "url_launcher",
         "uuid",
+        "web_socket_channel",
         "webview_flutter"
       ],
       "devDependencies": [
@@ -99,6 +100,15 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "web_socket_channel",
+      "version": "2.4.0",
+      "dependencies": [
+        "async",
+        "crypto",
+        "stream_channel"
       ]
     },
     {
@@ -190,17 +200,6 @@
         "collection",
         "source_span",
         "string_scanner"
-      ]
-    },
-    {
-      "name": "web_socket_channel",
-      "version": "3.0.3",
-      "dependencies": [
-        "async",
-        "crypto",
-        "stream_channel",
-        "web",
-        "web_socket"
       ]
     },
     {
@@ -683,13 +682,6 @@
         "collection",
         "path",
         "term_glyph"
-      ]
-    },
-    {
-      "name": "web_socket",
-      "version": "1.0.1",
-      "dependencies": [
-        "web"
       ]
     },
     {

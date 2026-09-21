@@ -16,5 +16,10 @@ const Map<String, String> enTranslations = {
   'tools': 'Tools',
   'processing_activities': 'Processing Activities',
   'data_processors': 'Data Processors',
+  'informational': 'Informational',
+  'next': 'Next',
+  'consent': 'Consent',
+  'necessary_group': 'Necessary',
+  'optional_group': 'Optional',
 };
 

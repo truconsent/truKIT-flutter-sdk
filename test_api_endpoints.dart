@@ -6,12 +6,21 @@
 import 'dart:convert';
 import 'dart:io';
 
-const String baseUrl = 'https://rdwcymn5poo6zbzg5fa5xzjsqy0zzcpm.lambda-url.ap-south-1.on.aws/banners';
-const String apiKey = '9yRWZqRRwA6jFlyCCBauJnYjOPjq9fLnDUb8cel0U-TF5R_smPM7Uw';
-const String orgId = 'mars-money';
+/// NOTE: this script targets a legacy Lambda-based endpoint shape and is not
+/// wired to the current `/api/v1/internal/...` API used by the SDK's
+/// `banner_service.dart`/`rights_center_api.dart`. Treat it as a manual,
+/// ad hoc smoke-test tool, not part of the SDK's supported test suite.
+///
+/// Never hardcode real credentials here. Supply them via environment
+/// variables when running: `API_BASE_URL=... API_KEY=... ORG_ID=... dart test_api_endpoints.dart`
+final String baseUrl =
+    Platform.environment['API_BASE_URL'] ?? 'https://example.invalid/banners';
+final String apiKey = Platform.environment['API_KEY'] ?? '';
+final String orgId = Platform.environment['ORG_ID'] ?? '';
 
-// Test user ID - replace with actual user ID for testing
-const String fullUserId = 'bae196b5-06d1-4f26-a391-03a3583f5965';
+// Test user ID - replace with actual user ID for testing, or set TEST_USER_ID.
+final String fullUserId =
+    Platform.environment['TEST_USER_ID'] ?? 'bae196b5-06d1-4f26-a391-03a3583f5965';
 final String dataPrincipalId = fullUserId.substring(0, 6); // First 6 characters
 
 final Map<String, String> headers = {
@@ -106,6 +115,14 @@ Future<TestResult> testEndpoint(String name, String url, {String method = 'GET'}
 }
 
 Future<void> main() async {
+  if (apiKey.isEmpty || orgId.isEmpty) {
+    stderr.writeln(
+      'Set API_KEY and ORG_ID (and optionally API_BASE_URL, TEST_USER_ID) '
+      'environment variables before running this script.',
+    );
+    exit(1);
+  }
+
   final separator = List.filled(60, '=').join();
   print(separator);
   print('Rights Center API Endpoints Test');

@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:truconsent_consent_notice_flutter/src/widgets/tru_consent_modal.dart';
+import 'package:truconsent_consent_notice_flutter/src/models/banner.dart' show ConsentAction;
 
 void main() {
   group('TruConsentModal', () {
@@ -20,7 +21,7 @@ void main() {
       );
 
       // Modal should show loading state
-      expect(find.text('Loading...'), findsOneWidget);
+      expect(find.text('Loading banner...'), findsOneWidget);
     });
 
     testWidgets('should display close button', (tester) async {
