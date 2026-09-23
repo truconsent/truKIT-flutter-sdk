@@ -21,5 +21,6 @@ const Map<String, String> enTranslations = {
   'consent': 'Consent',
   'necessary_group': 'Necessary',
   'optional_group': 'Optional',
+  'profile_based_group': 'Profile Based',
 };
 

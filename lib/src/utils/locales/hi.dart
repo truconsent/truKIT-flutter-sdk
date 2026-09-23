@@ -21,5 +21,6 @@ const Map<String, String> hiTranslations = {
   'consent': 'सहमति',
   'necessary_group': 'आवश्यक',
   'optional_group': 'वैकल्पिक',
+  'profile_based_group': 'प्रोफ़ाइल आधारित',
 };
 

@@ -468,43 +468,49 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
   }
 
   Widget _buildConsentPurposes(bool isMobile, BannerTheme theme) {
-    final mandatory = _uiState.mandatoryConsentPurposes;
-    final optional = _uiState.optionalConsentPurposes;
+    // Split into three visual groups the same way truKIT-NPM's TabbedBannerUI
+    // and truKIT-react-native's BannerUI do: a dynamic (profile-based)
+    // purpose is shown under its own "Profile Based" heading regardless of
+    // whether it's also mandatory, rather than being folded into "Necessary".
+    // This is purely a rendering split of the full consent purpose list —
+    // it does NOT touch uiState.mandatoryConsentPurposes/hasRequiredConsent,
+    // which intentionally still consider all mandatory purposes (dynamic or
+    // not) for H-Case detection.
+    final all = _uiState.consentPurposes;
+    final necessary = all.where((p) => p.isMandatory && !p.isDynamic).toList();
+    final profileBased = all.where((p) => p.isDynamic).toList();
+    final optional = all.where((p) => !p.isMandatory && !p.isDynamic).toList();
+
+    Widget buildGroup(String label, List<models.Purpose> items, {required bool isFirst}) {
+      if (items.isEmpty) return const SizedBox.shrink();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!isFirst) SizedBox(height: isMobile ? 8 : 12),
+          _buildGroupHeader(label, isMobile, theme),
+          SizedBox(height: isMobile ? 8 : 10),
+          ...items.map((p) => Padding(
+                padding: EdgeInsets.only(bottom: isMobile ? 10 : 12),
+                child: ModernPurposeCard(
+                  purpose: p,
+                  banner: widget.banner,
+                  onToggle: widget.onChangePurpose,
+                  theme: theme,
+                  translate: _translate,
+                ),
+              )),
+        ],
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (mandatory.isNotEmpty) ...[
-          _buildGroupHeader('Necessary', isMobile, theme),
-          SizedBox(height: isMobile ? 8 : 10),
-          ...mandatory.map((p) => Padding(
-                padding: EdgeInsets.only(bottom: isMobile ? 10 : 12),
-                child: ModernPurposeCard(
-                  purpose: p,
-                  banner: widget.banner,
-                  onToggle: widget.onChangePurpose,
-                  theme: theme,
-                  translate: _translate,
-                ),
-              )),
-        ],
-        if (optional.isNotEmpty) ...[
-          SizedBox(height: isMobile ? 8 : 12),
-          _buildGroupHeader('Optional', isMobile, theme),
-          SizedBox(height: isMobile ? 8 : 10),
-          ...optional.map((p) => Padding(
-                padding: EdgeInsets.only(bottom: isMobile ? 10 : 12),
-                child: ModernPurposeCard(
-                  purpose: p,
-                  banner: widget.banner,
-                  onToggle: widget.onChangePurpose,
-                  theme: theme,
-                  translate: _translate,
-                ),
-              )),
-        ],
-        // Fallback: show all purposes if neither mandatory nor optional (e.g., unclassified)
-        if (mandatory.isEmpty && optional.isEmpty)
+        buildGroup('Necessary', necessary, isFirst: true),
+        buildGroup('Profile Based', profileBased, isFirst: necessary.isEmpty),
+        buildGroup('Optional', optional, isFirst: necessary.isEmpty && profileBased.isEmpty),
+        // Fallback: show all purposes if none of the three groups matched (e.g., unclassified)
+        if (necessary.isEmpty && profileBased.isEmpty && optional.isEmpty)
           ...widget.banner.purposes.map((p) => Padding(
                 padding: EdgeInsets.only(bottom: isMobile ? 10 : 12),
                 child: ModernPurposeCard(
@@ -524,7 +530,9 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
         ? 'necessary_group'
         : label == 'Optional'
             ? 'optional_group'
-            : null;
+            : label == 'Profile Based'
+                ? 'profile_based_group'
+                : null;
     return Text(
       _tr(label, i18nKey),
       style: TextStyle(

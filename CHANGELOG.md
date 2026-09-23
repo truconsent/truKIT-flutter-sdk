@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-09-23
+
+### Fixed
+- `I Consent` being disabled whenever every optional purpose was declined, requiring at least one optional acceptance on top of the normal scroll-gating — Reject All and Only Necessary never had this extra requirement. Optional purposes are the user's free choice to accept or decline; Only Necessary already exists as the dedicated "decline everything optional" action, so gating I Consent on an optional acceptance just made it redundant with Only Necessary and confusingly disabled in the all-declined state. Matches `@truconsent/consent-notice` 0.0.37 and truKIT-react-native
+
+### Added
+- A "Profile Based" purpose group on the Consent tab, matching `@truconsent/consent-notice` and truKIT-react-native — dynamic (`isDynamic`) purposes were previously silently folded into "Necessary" or "Optional" with no group of their own. Purely a rendering split of the existing purpose list (`Necessary → Profile Based → Optional`); does not touch `UIState.mandatoryConsentPurposes`/H-Case detection, which intentionally still consider all mandatory purposes regardless of `isDynamic`
+
 ## [0.1.7] - 2026-09-23
 
 ### Changed

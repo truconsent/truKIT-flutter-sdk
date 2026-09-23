@@ -104,14 +104,10 @@ class ModernBannerActions extends StatelessWidget {
     final anyOptionalAccepted = hasOptionalAccepted(purposes);
     // Legitimate Interest purposes are never toggleable (no switch is even
     // rendered for them — see modern_purpose_card.dart) and can never be
-    // "accepted" by the user, so they must not count toward "optional
-    // purposes exist" — otherwise a banner with only Legitimate Interest +
-    // mandatory purposes (no real optional consent purpose at all) would
-    // permanently disable "I Consent", since anyOptionalAccepted can never
-    // become true. Matches hasOptionalAccepted's own filter above.
+    // "accepted" by the user, so they must not count as a real optional
+    // purpose to review. Matches hasOptionalAccepted's own filter above.
     final optionalPurposes =
         purposes.where((p) => !p.isMandatory && !p.isLegitimate).toList();
-    final hasOptional = optionalPurposes.isNotEmpty;
     // Matches truKIT-NPM's ModernBannerActions.jsx exactly: scrolling isn't
     // required when there's only a single optional purpose to review.
     final isSinglePurpose = optionalPurposes.length == 1;
@@ -122,7 +118,17 @@ class ModernBannerActions extends StatelessWidget {
     // button's *label* never changes ("I Consent"/actionButtonText, always)
     // — only its handler switches, once the user has an optional purpose
     // accepted or has interacted with a toggle this session.
-    final isIConsentEnabled = isActionsEnabled && (hasOptional ? anyOptionalAccepted : true);
+    //
+    // All three actions share the same gate: bottom reached (or single
+    // purpose). This previously also required at least one optional purpose
+    // to be accepted — but "optional" means the user is free to decline
+    // every one of them and still explicitly consent to that choice (that's
+    // what the button records); Only Necessary already exists as the
+    // dedicated "decline all optional" action, so gating I Consent on an
+    // optional acceptance just made it redundant with Only Necessary and
+    // confusingly disabled in the all-declined state. Matches truKIT-NPM's
+    // ModernBannerActions.jsx fix.
+    final isIConsentEnabled = isActionsEnabled;
     final dynamicButtonLabel = _trConfigurable(actionButtonText, 'I Consent');
 
     final screenWidth = MediaQuery.of(context).size.width;

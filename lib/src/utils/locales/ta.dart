@@ -21,5 +21,6 @@ const Map<String, String> taTranslations = {
   'consent': 'ஒப்புதல்',
   'necessary_group': 'அவசியமானவை',
   'optional_group': 'விருப்பமானவை',
+  'profile_based_group': 'சுயவிவரம் அடிப்படையிலானவை',
 };
 
