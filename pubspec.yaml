@@ -1,6 +1,6 @@
 name: truconsent_consent_notice_flutter
 description: Flutter SDK for TruConsent consent banner. This package provides native Flutter widgets for displaying and managing consent banners in Flutter applications.
-version: 0.1.6
+version: 0.1.7
 homepage: https://github.com/truconsent/truconsent-banner-flutter-sdk
 repository: https://github.com/truconsent/truconsent-banner-flutter-sdk
 issue_tracker: https://github.com/truconsent/truconsent-banner-flutter-sdk/issues

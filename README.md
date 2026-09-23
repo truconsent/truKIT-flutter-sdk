@@ -21,7 +21,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  truconsent_consent_notice_flutter: ^0.1.5
+  truconsent_consent_notice_flutter: ^0.1.6
 ```
 
 Then run:

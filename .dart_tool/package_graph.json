@@ -5,7 +5,7 @@
   "packages": [
     {
       "name": "truconsent_consent_notice_flutter",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "dependencies": [
         "flutter",
         "flutter_localizations",

@@ -370,9 +370,15 @@ class _BannerUIState extends State<BannerUI> with SingleTickerProviderStateMixin
       children: [
         TabBar(
           controller: _tabController,
-          labelColor: primaryColor,
+          // Active tab's label and indicator use Primary Text Color
+          // (theme.text), not Button Color (primaryColor) — Button Color is
+          // picked for contrast against a button's own background, not the
+          // banner's background, so a light banner with a bright Button
+          // Color read as low-contrast here. theme.text is guaranteed
+          // legible against the banner's own background by definition.
+          labelColor: theme.text,
           unselectedLabelColor: theme.textMuted,
-          indicatorColor: primaryColor,
+          indicatorColor: theme.text,
           tabs: tabs,
         ),
         SizedBox(

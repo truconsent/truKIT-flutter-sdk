@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-09-23
+
+### Changed
+- The Tabbed Banner's active tab label and indicator now use Primary Text Color (`theme.text`) instead of Button Color — Button Color is picked for contrast against a button's own background, not the banner's background, so a light banner paired with a bright accent Button Color read as low-contrast for the active tab. Primary Text Color is guaranteed legible against the banner's own background. Matches `@truconsent/consent-notice` 0.0.36 and truKIT-react-native
+
 ## [0.1.6] - 2026-09-21
 
 Three-way parity audit against `@truconsent/consent-notice` (the reference web SDK) — Consent Notice, Rights Center, and their underlying logic, not just appearance.
