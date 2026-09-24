@@ -128,7 +128,16 @@ class ModernBannerActions extends StatelessWidget {
     // optional acceptance just made it redundant with Only Necessary and
     // confusingly disabled in the all-declined state. Matches truKIT-NPM's
     // ModernBannerActions.jsx fix.
-    final isIConsentEnabled = isActionsEnabled;
+    //
+    // Necessary purposes' toggles stay interactive (the user can still
+    // switch one off), but "I Consent" specifically must not be clickable
+    // while any of them is off — Only Necessary/Reject All remain
+    // unaffected, since those are separate, always-available decline
+    // actions. Matches truKIT-NPM/truKIT-react-native.
+    final hasDeclinedMandatory = purposes.any(
+      (p) => p.isMandatory && !p.isLegitimate && p.consented == 'declined',
+    );
+    final isIConsentEnabled = isActionsEnabled && !hasDeclinedMandatory;
     final dynamicButtonLabel = _trConfigurable(actionButtonText, 'I Consent');
 
     final screenWidth = MediaQuery.of(context).size.width;

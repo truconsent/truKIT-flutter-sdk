@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2026-09-24
+
+### Fixed
+- `I Consent` staying enabled (and tappable) even when the user switched a Necessary/mandatory purpose's toggle off. Necessary toggles stay interactive by design — the user can still switch one off — but doing so must disable the "I Consent" action itself; only Reject All / Only Necessary remain available at that point, matching the existing H-Case warning popup's own definition of "mandatory purpose declined". Matches `@truconsent/consent-notice` 0.0.38 and truKIT-react-native
+
 ## [0.1.8] - 2026-09-23
 
 ### Fixed
